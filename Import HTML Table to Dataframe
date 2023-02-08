@@ -1,0 +1,11 @@
+from bs4 import BeautifulSoup
+import requests
+import pandas as pd
+
+url = "path"
+res = requests.get(url)
+soup = BeautifulSoup(res.content, 'html.parser')
+
+table = soup.find("table", {"class": "archiveResults mobFormat"})
+
+df = pd.read_html(str(table))[0]
