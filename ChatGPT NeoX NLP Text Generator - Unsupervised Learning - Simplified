@@ -1,0 +1,189 @@
+import openai
+import tensorflow as tf
+from transformers import GPTNeoXForCausalLM, GPT2Tokenizer
+import torch
+import numpy as np
+import sqlite3
+import time
+import torch.optim as optim
+import re
+
+#Connect to the database
+conn = sqlite3.connect('generated_text.db')
+cursor = conn.cursor()
+
+#Create the table to store the generated text and user feedback
+cursor.execute('''CREATE TABLE IF NOT EXISTS generated_text (
+                    id INTEGER PRIMARY KEY,
+                    prompt TEXT,
+                    generated_text TEXT,
+                    feedback TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)''')
+
+#Load the GPT-3 Neo model and tokenizer
+openai.api_key = "Enter API"
+model_engine = "text-davinc i-002"
+model_name = "EleutherAI/gpsadt-neox-20b"
+model = GPTNeoXForCausalLM.from_pretrained(model_name)
+tokenizer = GPT2TokenizerFast.from_pretrained(model_name)
+
+#Define the device
+device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
+#Read the input file into a string variable
+with open(r"path", 'rb') as f:
+    text = f.read().decode('latin-1')
+
+#Define maximum segment length
+max_length = 64
+#reduce max_length to reduce memory usage
+
+#Split input into smaller segments
+input_segments = []
+for i in range(0, len(text), max_length):
+    input_segments.append(text[i:i+max_length])
+
+#Split the text into a list of sentences
+sentences = re.findall(r'[^.!?]+[.!?]\s*', ''.join(input_segments))
+
+#Split the input sequence into a list of sentences
+input_seq = []
+for sentence in sentences:
+    if len(input_seq) == 0:
+        input_seq.append(sentence)
+    else:
+# Combine the last sentence in input_seq with the current sentence
+# If the length of the combined string is greater than 1024, then add the last sentence to input_seq
+        if len(input_seq[-1] + sentence) > 1024:
+            input_seq.append(sentence)
+        else:
+            input_seq[-1] += sentence
+
+#Initialize the prompt with the first sentence
+prompt = input_seq[0]
+
+#Initialize the generated text with an empty string
+generated_text = ""
+
+print("Starting the loop for continuous generation and learning...")
+
+#Start a loop for continuous generation and learning
+while True:
+
+# Append the generated text to the prompt
+    prompt += generated_text
+
+    input_ids = tokenizer.encode(prompt)
+    input_ids = torch.tensor(input_ids, dtype=torch.long).unsqueeze(0).to(device)
+
+    output = model.generate(input_ids=input_ids,
+                                    max_length=15000,
+                                    do_sample=True,
+                                    num_beams=5,
+                                    temperature=0.7,
+                                    top_k=50,
+                                    top_p=0.95,
+                                    repetition_penalty=1.2,
+                                    length_penalty=0.7,
+                                    pad_token_id=tokenizer.eos_token_id)
+
+    print("\nGenerated text is ready.\n")
+
+    generated_text = tokenizer.decode(output[0], skip_special_tokens=True)
+
+# Prompt the user to edit the generated text
+    print("\nGenerated text:\n", generated_text)
+    edited_text = input("\nPlease edit the generated text (press Enter to skip editing):\n")
+
+# Update the prompt based on the user's input
+    if edited_text.strip():
+        prompt = edited_text.strip()
+
+# Initialize an empty list to store all the generated texts and feedback
+    generated_texts_and_feedback = []
+
+# Define the optimizer and learning rate
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    criterion = nn.CrossEntropyLoss()
+
+    for batch in data_loader:
+        inputs, labels = batch[0].to(device), batch[1].to(device)
+        optimizer.zero_grad()
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+        optimizer.step()
+
+# Set the number of epochs and batch size
+    num_epochs = 10
+    batch_size = 16
+
+    acc_gradients = None
+    for i, (inputs, labels) in enumerate(train_loader):
+        inputs = inputs.to(device)
+        labels = labels.to(device)
+        outputs = model(inputs)
+        loss = criterion(outputs, labels)
+        loss.backward()
+
+        if (i + 1) % accumulation_steps == 0:
+            if acc_gradients is None:
+                acc_gradients = [p.grad.clone() for p in model.parameters()]
+            else:
+                for idx, p in enumerate(model.parameters()):
+                    acc_gradients[idx] += p.grad
+
+            for p in model.parameters():
+                p.grad = None
+
+            if (i + 1) % (accumulation_steps * num_batches_per_update) == 0:
+                for idx, p in enumerate(model.parameters()):
+                    p.grad = acc_gradients[idx] / (accumulation_steps * num_batches_per_update)
+
+                optimizer.step()
+                optimizer.zero_grad()
+
+                acc_gradients = None
+
+# Loop through the input sequences and train the model on each batch
+    for epoch in range(num_epochs):
+        for i in range(0, len(input_seq), batch_size):
+            # Get the batch of input data
+            input_batch = input_seq[i:i + batch_size]
+            print("Epoch", epoch + 1, "completed.")
+
+        # Initialize an empty list to store all the generated texts and feedback for this batch
+        generated_texts_and_feedback = []
+
+        # Loop through all the generated texts and feedback in the database and add them to the list
+        for text, feedback in generated_texts_and_feedback:
+            generated_texts_and_feedback.append((text, feedback))
+
+        # Initialize the loss for this batch
+        total_loss = 0
+
+        # Loop through all the generated texts and feedback in this batch
+        for text, feedback in generated_texts_and_feedback:
+            # Combine the prompt, generated text, and feedback into one input text
+            input_text = prompt + ' ' + text + ' ' + feedback
+            print("Loop for continuous generation and learning has completed.")
+
+            # Encode the input text using the tokenizer
+            input_ids = tokenizer.encode(input_text, return_tensors='pt')
+
+            # Clone the input_ids to create the labels
+            labels = input_ids.clone()
+
+            # Set the first token in the labels to -100 to mask the prompt token
+            labels[0] = -100
+
+            # Run the input_ids through the model to compute the loss and logits
+            loss, logits, _ = model(input_ids=input_ids, labels=labels)
+
+            # Add the loss for this generated text and feedback to the total loss for the batch
+            total_loss += loss
+
+        # Backpropagate the total loss through the model and update the model parameters
+        total_loss.backward()
+        optimizer.step()
+        model.zero_grad()
